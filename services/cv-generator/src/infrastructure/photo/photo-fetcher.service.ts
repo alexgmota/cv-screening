@@ -2,6 +2,33 @@
  * Fetches a fresh candidate portrait photo from the RandomUser API on demand.
  */
 export class PhotoFetcherService {
+    async fetchProfile(gender?: 'male' | 'female'): Promise<{
+      name: string;
+      email: string;
+      phone: string;
+      gender: 'male' | 'female';
+      photo: Buffer | null;
+    } | null> {
+      try {
+        const profileResponse = await this.fetchJson(
+          `https://randomuser.me/api/?${gender ? `gender=${gender}&` : ''}nat=us`
+        );
+        const result = profileResponse?.results?.[0];
+        if (!result) return null;
+
+        const imageUrl = result.picture?.large ?? result.picture?.medium ?? result.picture?.thumbnail;
+        return {
+          name: [result.name?.first, result.name?.last].filter(Boolean).join(' '),
+          email: result.email ?? '',
+          phone: result.phone ?? result.cell ?? '',
+          gender: result.gender === 'female' ? 'female' : 'male',
+          photo: imageUrl ? await this.fetchBinary(imageUrl) : null,
+        };
+      } catch {
+        return null;
+      }
+    }
+
   private readonly timeoutMs: number;
 
   constructor(timeoutMs = 10_000) {
@@ -15,7 +42,7 @@ export class PhotoFetcherService {
   async fetchPhoto(gender: 'male' | 'female' = 'male'): Promise<Buffer | null> {
     try {
       const profileResponse = await this.fetchJson(`https://randomuser.me/api/?gender=${gender}&nat=us`);
-      const imageUrl = profileResponse?.results?.[0]?.picture?.thumbnail ?? profileResponse?.results?.[0]?.picture?.medium ?? profileResponse?.results?.[0]?.picture?.large;
+      const imageUrl = profileResponse?.results?.[0]?.picture?.large ?? profileResponse?.results?.[0]?.picture?.medium ?? profileResponse?.results?.[0]?.picture?.thumbnail;
       if (!imageUrl) {
         return null;
       }

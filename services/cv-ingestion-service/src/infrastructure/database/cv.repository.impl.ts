@@ -12,8 +12,8 @@ export class CvRepositoryImpl implements ICvRepository {
     );
   }
 
-  private readonly cvInsertSql = `INSERT INTO cvs (id, name, email, phone, role, summary, photo_path, pdf_path, skills, education, experience, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      private readonly cvInsertSql = `INSERT INTO cvs (id, name, email, phone, role, summary, photo_path, pdf_path, skills, education, experience, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          email = EXCLUDED.email,

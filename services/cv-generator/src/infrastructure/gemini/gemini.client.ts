@@ -4,13 +4,8 @@ import { CvData } from '../../domain/cv/cv-data.entity';
 import { Education, Experience } from '../../domain/cv/cv.types';
 
 interface ParsedCvPayload {
-  name: string;
-  email: string;
-  phone: string;
   role: string;
-  photoUrl: string;
   summary: string;
-  gender: 'male' | 'female';
   skills: string[];
   education: Education[];
   experience: Experience[];
@@ -18,7 +13,6 @@ interface ParsedCvPayload {
 
 export interface GeneratedCvData {
   cvData: CvData;
-  gender: 'male' | 'female';
 }
 
 /**
@@ -44,9 +38,17 @@ export class GeminiClient {
       const text = result.response.text();
       const payload = JSON.parse(text) as ParsedCvPayload;
 
-      const { gender, ...cvProps } = payload;
-      const cvData = CvData.create(cvProps);
-      return { cvData, gender };
+      const cvData = CvData.create({
+        name: '',
+        email: '',
+        phone: '',
+        role: payload.role,
+        summary: payload.summary,
+        skills: payload.skills,
+        education: payload.education,
+        experience: payload.experience,
+      });
+      return { cvData };
     } catch (error) {
       throw CvDomainError.generationFailed(error);
     }
@@ -55,22 +57,13 @@ export class GeminiClient {
   private buildPrompt(role: string): string {
     return [
       'You are an expert CV writer. Generate a realistic, high-quality CV for a candidate.',
-      'Generate a unique, culturally diverse full name. Vary ethnic backgrounds across candidates (South Asian, East Asian, African, Latin American, European, Middle Eastern, etc.). Do NOT use placeholder names like Alex, John, Jane, Smith, or other generic English names.',
-      'Create a distinct email address derived from that name using varied providers (gmail.com, outlook.com, protonmail.com, icloud.com, yahoo.com, etc.). Never reuse the same email or name.',
-      'Generate a realistic phone number with varied country codes (+44, +49, +91, +65, +52, +234, +33, +55, +81, +971, etc.). Never reuse a phone number.',
       'Use unique, fictional company names, universities, and skills for every candidate. Do not repeat companies, schools, or skill sets across CVs.',
       'Write a professional summary as a single 3-4 sentence paragraph describing the candidate\'s background, strengths, and career goals.',
       `Target role: ${role}.`,
-      'Set gender to "male" or "female" based on the candidate\'s name. Only used to pick a matching portrait photo.',
       'Respond with ONLY valid JSON matching this TypeScript interface, no markdown:',
       JSON.stringify({
-        name: 'string',
-        email: 'string',
-        phone: 'string',
         role: 'string',
-        photoUrl: 'string',
         summary: 'string',
-        gender: '"male" | "female"',
         skills: ['string'],
         education: [
           {

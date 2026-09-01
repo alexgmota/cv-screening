@@ -31,10 +31,13 @@ export class CvGenerationService {
    */
   async generate(role: string): Promise<GeneratedCvResult> {
     await this.waitForRateLimit();
-    const { cvData, gender } = await this.geminiClient.generateCvData(role);
+    const profile = this.photoFetcher.fetchProfile
+      ? await this.photoFetcher.fetchProfile()
+      : null;
+    const { cvData } = await this.geminiClient.generateCvData(role);
     this.lastGeminiCallAt = Date.now();
 
-    const photoBuffer = await this.photoFetcher.fetchPhoto(gender);
+    const photoBuffer = profile?.photo ?? await this.photoFetcher.fetchPhoto();
     const photoKey = photoBuffer ? `photos/${cvData.id}.jpg` : undefined;
 
     if (photoBuffer && photoKey) {
@@ -42,6 +45,11 @@ export class CvGenerationService {
     }
 
     const baseProps = this.extractProps(cvData);
+    if (profile) {
+      baseProps.name = profile.name;
+      baseProps.email = profile.email;
+      baseProps.phone = profile.phone;
+    }
     const { photoUrl: _unusedPhotoUrl, ...cvDataPropsWithoutPhoto } = baseProps;
     const cvDataWithPhoto = CvData.create(
       photoKey
