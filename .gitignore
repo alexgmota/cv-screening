@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.next/
+out/
+*.js.map
+*.d.ts.map
+*.tsbuildinfo
+packages/shared/src/**/*.js
+packages/shared/src/**/*.d.ts
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Coverage
+coverage/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Data
+data/
+*.pdb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Temp
+tmp/
+temp/
+.cache/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/

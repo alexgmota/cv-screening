@@ -1,0 +1,43 @@
+{
+  "name": "@leadtech/cv-generator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CV Generator service - CV data generation, PDF rendering, ingestion pipeline",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@leadtech/shared": "workspace:*",
+    "awilix": "^13.0.5",
+    "cors": "^2.8.6",
+    "express": "^4.19.2",
+    "node-fetch": "^3.3.2",
+    "pdfkit": "^0.20.2",
+    "pg": "^8.23.0",
+    "sharp": "^0.35.4",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.12",
+    "@types/node-fetch": "^2.6.13",
+    "@types/pdfkit": "^0.17.6",
+    "@types/pg": "^8.23.1",
+    "@types/uuid": "^9.0.8",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.13",
+    "typescript": "^5.4.5",
+    "vitest": "^4.1.11"
+  }
+}

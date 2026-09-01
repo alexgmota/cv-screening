@@ -1,0 +1,126 @@
+name: leadtech-cv-screening
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: leadtech-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  cv-service:
+    build:
+      context: .
+      dockerfile: services/cv-service/Dockerfile
+    container_name: leadtech-cv-service
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: 4002
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      CORS_ORIGIN: http://localhost:3000
+      DATA_VOLUME_PATH: /data/cvs
+      TOP_K_SOURCES: ${TOP_K_SOURCES}
+      GEMINI_RETRY_MAX: ${GEMINI_RETRY_MAX}
+      GEMINI_RETRY_BASE_DELAY_MS: ${GEMINI_RETRY_BASE_DELAY_MS}
+      GEMINI_RETRY_MAX_DELAY_MS: ${GEMINI_RETRY_MAX_DELAY_MS}
+    ports:
+      - "${CV_SERVICE_PORT}:4002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - shared_cvs:/data/cvs
+    networks:
+      - app-network
+
+  cv-ingestion-service:
+    build:
+      context: .
+      dockerfile: services/cv-ingestion-service/Dockerfile
+    container_name: leadtech-cv-ingestion-service
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: 4003
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      CORS_ORIGIN: http://localhost:3000
+      CHUNK_SIZE: ${CHUNK_SIZE}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP}
+      GEMINI_RETRY_MAX: ${GEMINI_RETRY_MAX}
+      GEMINI_RETRY_BASE_DELAY_MS: ${GEMINI_RETRY_BASE_DELAY_MS}
+      GEMINI_RETRY_MAX_DELAY_MS: ${GEMINI_RETRY_MAX_DELAY_MS}
+    ports:
+      - "${CV_INGESTION_SERVICE_PORT}:4003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  cv-generator:
+    build:
+      context: .
+      dockerfile: services/cv-generator/Dockerfile
+    container_name: leadtech-cv-generator
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: 4001
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      CV_STORAGE_PATH: /data/cvs
+      PDF_STORAGE_PATH: /data/cvs
+      CV_INGESTION_URL: http://cv-ingestion-service:4003
+    ports:
+      - "${CV_GENERATOR_PORT}:4001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      cv-ingestion-service:
+        condition: service_started
+    volumes:
+      - shared_cvs:/data/cvs
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: services/frontend/Dockerfile
+    container_name: leadtech-frontend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NEXT_PUBLIC_CV_SERVICE_URL: http://localhost:4002
+    ports:
+      - "${FRONTEND_PORT}:3000"
+    depends_on:
+      - cv-service
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+  shared_cvs:
+
+networks:
+  app-network:
+    driver: bridge

@@ -1,0 +1,21 @@
+{
+  "name": "@leadtech/shared",
+  "version": "1.0.0",
+  "description": "Shared types, value objects, and utilities for LeadTech CV Screening",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "pnpm build"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^20.11.30",
+    "typescript": "^5.3.3"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,25 @@
+{
+  "name": "leadtech-cv-screening",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI-powered CV screening tool with RAG pipeline",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "build:shared": "pnpm build --filter @leadtech/shared",
+    "dev:cv-service": "pnpm --filter @leadtech/cv-service dev",
+    "dev:cv-ingestion-service": "pnpm --filter @leadtech/cv-ingestion-service dev",
+    "dev:cv-generator": "pnpm --filter @leadtech/cv-generator dev",
+    "dev:frontend": "pnpm --filter @leadtech/frontend dev",
+    "test": "pnpm -r test",
+    "test:unit": "pnpm -r test",
+    "test:e2e": "playwright test",
+    "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.45.0",
+    "typescript": "^5.4.5"
+  }
+}
