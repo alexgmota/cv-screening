@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { CvGenerationService } from './cv-generation.service';
+import { CvGenerationService, GeneratedCvResult } from './cv-generation.service';
 import { CvDomainError } from '../../domain/shared/app-error';
 
 export type JobStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
@@ -108,51 +108,21 @@ export class GenerationUseCase {
     });
   }
 
-  private async notifyBackendForIndexing(result: {
-    cvData: { id: string; name: string; email: string; phone: string; role: string; summary: string; skills: string[]; education: any[]; experience: any[]; photoUrl?: string };
-    cvPdf: { filePath: string };
-  }): Promise<void> {
+  private async notifyBackendForIndexing(result: Pick<GeneratedCvResult, 'cvPdf'>): Promise<void> {
     const ingestionUrl = (process.env.CV_INGESTION_URL || 'http://cv-ingestion-service:4003').replace(/\/$/, '');
-    const text = [
-      `Candidate: ${result.cvData.name}`,
-      `Role: ${result.cvData.role}`,
-      `Summary: ${result.cvData.summary}`,
-      `Email: ${result.cvData.email}`,
-      `Phone: ${result.cvData.phone}`,
-      `Skills: ${result.cvData.skills.join(', ')}`,
-      'Education:',
-      ...(result.cvData.education ?? []).map((item) => `${item.institution ?? ''} ${item.degree ?? ''} ${item.field ?? ''}`.trim()),
-      'Experience:',
-      ...(result.cvData.experience ?? []).map((item) => `${item.company ?? ''} ${item.position ?? ''} ${item.description ?? ''}`.trim()),
-    ].filter(Boolean).join('\n');
 
     try {
       const response = await fetch(`${ingestionUrl}/api/cvs/index`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cv: {
-            id: result.cvData.id,
-            name: result.cvData.name,
-            email: result.cvData.email,
-            phone: result.cvData.phone,
-            role: result.cvData.role,
-            summary: result.cvData.summary,
-            photoPath: result.cvData.photoUrl,
-            pdfPath: result.cvPdf.filePath,
-            skills: result.cvData.skills,
-            education: result.cvData.education,
-            experience: result.cvData.experience,
-          },
-          text,
-        }),
+        body: JSON.stringify({ pdfPath: result.cvPdf.filePath }),
       });
 
       if (!response.ok) {
         const body = await response.text();
         console.error('[cv-generator] backend indexing failed', {
           ingestionUrl,
-          cvId: result.cvData.id,
+          pdfPath: result.cvPdf.filePath,
           status: response.status,
           body,
         });
@@ -160,7 +130,7 @@ export class GenerationUseCase {
     } catch (error) {
       console.error('[cv-generator] backend indexing request failed', {
         ingestionUrl,
-        cvId: result.cvData.id,
+        pdfPath: result.cvPdf.filePath,
         error,
       });
     }

@@ -15,8 +15,8 @@ The system uses Command Query Responsibility Segregation (CQRS) split at the ser
 - Contains no write endpoints or save paths
 
 **Write Side (Command) - `cv-ingestion-service` (port 4003):**
-- Consumed by the cv-generator: `POST /api/cvs/index`
-- `CvIngestionUseCase` → `CvIngestionService`: handles CV ingestion (save → chunk → embed → store)
+- Consumed by the cv-generator: `POST /api/cvs/index` — receives a PDF path reference only (`{ pdfPath }`), reads the PDF from the shared volume (`/data/cvs`), extracts text with `pdf-parse`, and uses Google Gemini to extract structured CV metadata (name, email, phone, role, summary, skills, education, experience) before persisting
+- `CvIngestionUseCase` → `CvIngestionService`: handles PDF read → text extraction → Gemini metadata extraction → save → chunk → embed → store
 - Contains no read endpoints
 
 **Generation (producer) - `cv-generator` (port 4001):**
@@ -66,7 +66,7 @@ The system uses Command Query Responsibility Segregation (CQRS) split at the ser
 
 | Service | Port | Responsibility |
 |---------|------|----------------|
-| Frontend | 3000 | Next.js SPA, /chat route, Tailwind UI |
+| Frontend | 3000 | Next.js SPA with /chat and /cvs routes, shared header nav, Tailwind UI |
 | cv-service | 4002 | CQRS read: Chat API (RAG), CV metadata + PDF endpoints |
 | cv-ingestion-service | 4003 | CQRS write: CV ingestion (save, chunk, embed) |
 | CV Generator | 4001 | CV data generation, photo fetch, PDF rendering, ingestion push |
@@ -114,19 +114,35 @@ The system uses Command Query Responsibility Segregation (CQRS) split at the ser
 
 #### GET /api/cvs
 
+Lists CV metadata with database-level pagination and search.
+
+**Query Params:**
+- `search` - optional, case-insensitive (ILIKE) match against `name` or `role`
+- `page` - optional, defaults to `1`
+- `limit` - optional, defaults to `20`, max `100`
+
+Pagination and search are performed in the database (Postgres).
+
 **Response:**
 ```json
 {
-  "cvs": [
+  "data": [
     {
       "id": "uuid",
       "name": "Jane Doe",
       "email": "jane@example.com",
+      "phone": "+1-555-0100",
       "role": "Data Scientist",
       "skills": ["Python", "Machine Learning", "SQL"],
-      "created_at": "2024-01-01T00:00:00Z"
+      "createdAt": "2024-01-01T00:00:00Z"
     }
-  ]
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 30,
+    "totalPages": 2
+  }
 }
 ```
 
@@ -149,21 +165,16 @@ Health check returning `{ status, service: 'cv-service', uptime, timestamp }`.
 **Request (sent by cv-generator):**
 ```json
 {
-  "cv": {
-    "id": "uuid",
-    "name": "Jane Doe",
-    "email": "jane@example.com",
-    "role": "Data Scientist",
-    "summary": "...",
-    "photoPath": "photos/xxx.jpg",
-    "pdfPath": "cvs/xxx.pdf",
-    "skills": ["Python"],
-    "education": [],
-    "experience": []
-  },
-  "text": "..."
+  "pdfPath": "cvs/uuid.pdf"
 }
 ```
+
+The `pdfPath` is relative to the shared storage volume; the full file is at `{DATA_VOLUME_PATH}/{pdfPath}` (e.g. `/data/cvs/cvs/uuid.pdf`). The ingestion flow:
+
+1. Read the PDF from the shared volume via `FileSystemStorage`
+2. Extract plain text from the PDF with `pdf-parse`
+3. Send the extracted text to Google Gemini with a prompt to produce structured CV metadata as JSON (`name`, `email`, `phone`, `role`, `summary`, `skills[]`, `education[]`, `experience[]`). The metadata schema is duplicated locally in the ingestor (`cv-metadata-extractor.ts`) — there is no shared metadata package between the services.
+4. Build a `CvEntity` (with `pdfPath` = the incoming reference; `photoPath` left unset because the portrait lives inside the PDF) and persist via the existing UnitOfWork transaction: save CV → chunk text → embed chunks → upsert embeddings.
 
 **Response:**
 ```json
@@ -342,8 +353,8 @@ Returns the current status of a previously accepted generation job.
    b. RandomUser fetches a gender-matched portrait
    c. PDFKit renders PDF from JSON + photo
    d. StorageService saves PDF/photo to shared volume
-   e. cv-generator pushes metadata + text to cv-ingestion-service /api/cvs/index
-4. cv-ingestion-service saves CV metadata to Postgres, chunks text, embeds chunks
+    e. cv-generator notifies cv-ingestion-service with pdfPath reference only
+4. cv-ingestion-service reads PDF from shared volume, extracts text with pdf-parse, uses Gemini to extract CV metadata, then saves metadata + chunks + embeddings
 5. Return job status
 ```
 
@@ -358,11 +369,13 @@ Read path:  cv-service GET /api/cvs/:id/pdf → stream from shared volume
 ### RAG Ingestion (per CV)
 
 ```
-1. CV text received via POST /api/cvs/index
-2. Text split into overlapping chunks (512 tokens, 50 overlap)
-3. Each chunk embedded via Gemini embedding model
-4. Embeddings stored in pgvector with CV metadata
-5. Index updated for similarity search
+1. cv-ingestion-service receives PDF path reference via POST /api/cvs/index
+2. Reads PDF from shared volume /data/cvs, extracts text with pdf-parse
+3. Gemini extracts structured CV metadata (name, email, phone, role, summary, skills, education, experience)
+4. Text split into overlapping chunks (512 tokens, 50 overlap)
+5. Each chunk embedded via Gemini embedding model
+6. Embeddings stored in pgvector with CV metadata
+7. Index updated for similarity search
 ```
 
 ### Chat
@@ -395,6 +408,8 @@ export interface StorageService {
 **Implementations:**
 - `FileSystemStorage`: Local filesystem (default)
 - Future: `S3Storage`, `MinIOStorage`
+
+**Shared volume:** The `cv-ingestion-service` also reads from the `shared_cvs:/data/cvs` volume (shared with cv-generator and cv-service), using the `DATA_VOLUME_PATH` env (default `/data/cvs`) to resolve the incoming `pdfPath` reference.
 
 ## Error Model
 

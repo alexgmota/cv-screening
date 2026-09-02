@@ -61,6 +61,7 @@ services:
       PORT: 4003
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       CORS_ORIGIN: http://localhost:3000
+      DATA_VOLUME_PATH: /data/cvs
       CHUNK_SIZE: ${CHUNK_SIZE}
       CHUNK_OVERLAP: ${CHUNK_OVERLAP}
       GEMINI_RETRY_MAX: ${GEMINI_RETRY_MAX}
@@ -71,6 +72,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - shared_cvs:/data/cvs
     networks:
       - app-network
 

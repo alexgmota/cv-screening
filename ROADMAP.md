@@ -891,6 +891,73 @@ Replace the `backend` container with `cv-service` and `cv-ingestion-service` in 
 
 ---
 
+### Task 39: CV Database Table + Paginated Search Endpoint
+
+**Status:** `[ ]`
+**Dependencies:** Tasks 37, 38
+**Estimated:** 45min
+
+**Description:**
+Add database-level paginated search to the cv-service GET /api/cvs endpoint and a new /cvs table view on the frontend.
+
+**Acceptance Criteria:**
+- GET /api/cvs supports `search` (name/role ILIKE), `page`, `limit` with DB-level pagination and unchanged response shape
+- New frontend route `/cvs` renders a table (Name, Role, Phone+copy, Email+copy, Skills chips, Open CV)
+- Search input filters by name or role
+- Page size 10 with pagination controls
+- Open CV opens the existing slide-in PDF viewer
+- Shared header nav links /chat and /cvs
+- Docs updated (ARCHITECTURE.md, REQUIREMENTS.md)
+
+**Files:**
+- `services/cv-service/src/domain/cv/cv.repository.ts`
+- `services/cv-service/src/infrastructure/database/cv.repository.impl.ts`
+- `services/cv-service/src/application/cv/cv-query.service.ts`
+- `services/cv-service/src/interfaces/controllers/cv.controller.ts`
+- `services/cv-service/src/**/*.test.ts`
+- `services/frontend/src/app/cvs/page.tsx`
+- `services/frontend/src/components/candidates/`
+- `services/frontend/src/lib/api.ts`
+- `services/frontend/src/hooks/use-cvs.ts`
+- `services/frontend/src/components/nav/`
+
+---
+
+### Task 40: Ingestion Metadata Extraction from PDF Reference
+
+**Status:** `[ ]`
+**Dependencies:** Task 38
+**Estimated:** 60min
+
+**Description:**
+Change the cv-generator→cv-ingestion-service contract so only a `pdfPath` reference is shared; the ingestor reads the PDF from the shared volume, parses it with pdf-parse, uses Gemini to extract the full CV metadata model (name, email, phone, role, summary, skills, education, experience — schema duplicated locally), and persists via the existing UnitOfWork.
+
+**Acceptance Criteria:**
+- POST /api/cvs/index accepts `{ pdfPath }` only and rejects missing pdfPath with 400 VALIDATION_ERROR
+- cv-generator sends only `{ pdfPath }` (no cv metadata / text in the body)
+- cv-ingestion-service reads the PDF from `{DATA_VOLUME_PATH}/{pdfPath}` (shared volume mounted; `DATA_VOLUME_PATH` env default `/data/cvs`)
+- PDF text extracted with pdf-parse
+- Gemini extracts full CV metadata (incl. email/phone) as JSON; schema duplicated locally, no shared package
+- CV + embeddings saved transactionally via existing UnitOfWork
+- Builds + unit + integration tests for both services pass
+
+**Files:**
+- `services/cv-generator/src/application/generation/cv-generation.use-case.ts`
+- `services/cv-ingestion-service/src/infrastructure/pdf/pdf-extractor.service.ts`
+- `services/cv-ingestion-service/src/infrastructure/gemini/cv-metadata-extractor.ts`
+- `services/cv-ingestion-service/src/infrastructure/storage/file-system.storage.ts`
+- `services/cv-ingestion-service/src/application/cv/cv-ingestion.service.ts`
+- `services/cv-ingestion-service/src/application/cv/cv-ingestion.use-case.ts`
+- `services/cv-ingestion-service/src/interfaces/controllers/cv.controller.ts`
+- `services/cv-ingestion-service/src/di.container.ts`
+- `services/cv-ingestion-service/package.json`
+- `docker-compose.yml`
+- `.env`
+- tests
+- this docs task
+
+---
+
 ## Critical Path
 
 ```
@@ -911,3 +978,5 @@ Replace the `backend` container with `cv-service` and `cv-ingestion-service` in 
 - Tasks 34, 35 can run in parallel (new standalone services)
 - Tasks 36, 37 can run in parallel after 34/35
 - Task 38 waits on 34-37
+- Task 39 can run independently after Tasks 37/38
+- Task 40 can run independently after Tasks 38/39

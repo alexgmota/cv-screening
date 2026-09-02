@@ -69,6 +69,7 @@ function getHttpStatus(code: string): number {
     LLM_UNAVAILABLE: 503,
     CV_GENERATION_FAILED: 500,
     EMBEDDING_FAILED: 500,
+    EXTRACTION_FAILED: 500,
     STORAGE_ERROR: 500,
   };
   return statusMap[code] || 500;

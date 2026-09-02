@@ -19,7 +19,9 @@
 
 ### RAG Pipeline
 
-- Extract text from generated PDF documents using pdf-parse
+- Ingestion begins with a PDF path reference (`{ pdfPath }`) posted to the cv-ingestion-service
+- Ingestor reads the PDF from the shared volume (`{DATA_VOLUME_PATH}/{pdfPath}`) and parses it with pdf-parse to extract plain text
+- Gemini extracts structured CV metadata from the parsed text as JSON (name, email, phone, role, summary, skills, education, experience)
 - Split extracted text into overlapping chunks for embedding
 - Generate vector embeddings via Google Gemini embedding model
 - Store embeddings in pgvector (Postgres extension)
@@ -39,6 +41,15 @@
 - Loading states during RAG processing
 - Graceful error handling when RAG or LLM fails
 
+### CV Database Table
+
+- Dedicated `/cvs` route in frontend
+- Table columns: Name, Role, Phone (with copy-to-clipboard button), Email (with copy-to-clipboard button), Skills (rendered as chips), Open CV button
+- Text input to search candidates by name or role
+- Pagination with page size of 10
+- "Open CV" opens the existing slide-in PDF viewer panel
+- Shared header navigation between the Chat and CV Database views
+
 ### RAG Configuration
 
 - Chunk size, chunk overlap, and number of sources (top-K) configurable via environment variables:
@@ -54,7 +65,7 @@ Read side - `cv-service` (port 4002):
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/chat` | Send question, get RAG response with sources |
-| GET | `/api/cvs` | List all CVs (metadata) |
+| GET | `/api/cvs` | List all CVs (metadata) with database-level pagination + search by name/role via `search`, `page`, `limit` params |
 | GET | `/api/cvs/:id` | Get single CV details |
 | GET | `/api/cvs/:id/pdf` | Stream generated CV PDF |
 | GET | `/api/health` | Health check |
@@ -63,7 +74,7 @@ Write side - `cv-ingestion-service` (port 4003):
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/cvs/index` | Ingest a generated CV (save, chunk, embed) |
+| POST | `/api/cvs/index` | Ingest a generated CV from a PDF reference (read PDF, extract text + metadata via Gemini, embed) |
 | GET | `/api/health` | Health check |
 
 Producer - `cv-generator` (port 4001):
@@ -123,6 +134,8 @@ Producer - `cv-generator` (port 4001):
 | Architecture | CQRS (Command Query Responsibility Segregation) | Separates read/write concerns; query service for reads, use cases for writes |
 | Tooltip | Radix UI Tooltip + react-loading-skeleton | Accessible tooltips with polished skeleton loading |
 | LLM Resilience | Exponential backoff + jitter on embedding retries | Handles rate limits (429) and transient server errors (5xx) |
+| Data retrieval | Database-level pagination + search on GET /api/cvs | Scales cleanly on the read side and keeps the frontend thin; search via parameterized ILIKE on name/role |
+| Metadata extraction | Gemini extracts CV metadata from parsed PDF text on the ingestion side | The generator→ingestor contract shrinks to a single pdfPath reference; metadata schema duplicated locally rather than a shared package |
 
 ## Constraints
 

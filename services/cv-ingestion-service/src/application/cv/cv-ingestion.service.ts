@@ -3,6 +3,9 @@ import { CvEntity } from '../../domain/cv/cv.entity';
 import { CvEmbedding } from '../../domain/cv/cv-embedding.entity';
 import { DomainError } from '../../domain/shared/app-error';
 import { IUnitOfWork } from './unit-of-work';
+import { PdfExtractorService } from '../../infrastructure/pdf/pdf-extractor.service';
+import { CvMetadataExtractor } from '../../infrastructure/gemini/cv-metadata-extractor';
+import { FileSystemStorage } from '../../infrastructure/storage/file-system.storage';
 
 /**
  * Splits raw document text into discrete chunks for embedding.
@@ -14,30 +17,81 @@ export interface ITextChunker {
 
 /**
  * Application service that orchestrates the CV ingestion pipeline.
- * Extracts structured CV data, chunks its text, generates embeddings,
- * and persists both the CV and its embeddings.
+ * Reads a PDF, extracts its text, extracts structured CV metadata,
+ * chunks the text, generates embeddings, and persists the CV and its embeddings.
  */
 export class CvIngestionService {
   /**
    * @param geminiClient Gemini client used to generate embeddings.
-   * @param cvRepository Repository for persisting CV entities.
-   * @param embeddingRepository Repository for persisting embeddings.
+   * @param unitOfWork Unit of work for atomic CV and embedding persistence.
    * @param chunker Chunker that splits extracted text into digestible chunks.
+   * @param pdfExtractor Extractor that reads plain text from PDF buffers.
+   * @param metadataExtractor Extractor that derives structured CV metadata from text.
+   * @param storage File-system storage that reads the PDF by path.
    */
   constructor(
     private readonly geminiClient: GeminiClient,
     private readonly unitOfWork: IUnitOfWork,
-    private readonly chunker: ITextChunker
+    private readonly chunker: ITextChunker,
+    private readonly pdfExtractor: PdfExtractorService,
+    private readonly metadataExtractor: CvMetadataExtractor,
+    private readonly storage: FileSystemStorage
   ) {}
 
   /**
-   * Ingests a CV: persists its metadata and embeds each text chunk.
-   * @param cv The CV entity to persist.
-   * @param text The raw extracted text belonging to the CV.
+   * Ingests a CV: reads its PDF, extracts metadata, and persists
+   * the CV and its chunk embeddings atomically.
+   * @param pdfPath Path to the CV PDF relative to the storage root.
    * @param requestId Optional request identifier for error reporting.
-   * @throws DomainError when storage or embedding fails.
+   * @returns The created CV entity.
+   * @throws DomainError when storage, extraction, or embedding fails.
    */
-  async ingest(cv: CvEntity, text: string, requestId?: string): Promise<void> {
+  async ingest(pdfPath: string, requestId?: string): Promise<CvEntity> {
+    let buffer: Buffer;
+    try {
+      buffer = await this.storage.read(pdfPath);
+    } catch (error) {
+      throw new DomainError(
+        'STORAGE_ERROR',
+        'Failed to read CV PDF from storage',
+        { requestId, pdfPath, cause: error }
+      );
+    }
+
+    let text: string;
+    try {
+      text = await this.pdfExtractor.extract(buffer);
+    } catch (error) {
+      throw new DomainError(
+        'EXTRACTION_FAILED',
+        'Failed to extract text from CV PDF',
+        { requestId, pdfPath, cause: error }
+      );
+    }
+
+    let metadata;
+    try {
+      metadata = await this.metadataExtractor.extractMetadata(text);
+    } catch (error) {
+      throw new DomainError(
+        'EXTRACTION_FAILED',
+        'Failed to extract CV metadata',
+        { requestId, pdfPath, cause: error }
+      );
+    }
+
+    const cv = CvEntity.create({
+      name: metadata.name,
+      email: metadata.email || undefined,
+      phone: metadata.phone || undefined,
+      role: metadata.role,
+      summary: metadata.summary,
+      pdfPath,
+      skills: metadata.skills,
+      education: metadata.education,
+      experience: metadata.experience,
+    });
+
     const chunks = this.chunker.chunk(text);
 
     let embeddings: number[][];
@@ -75,5 +129,7 @@ export class CvIngestionService {
         { requestId, cvId: cv.id, cause: error }
       );
     }
+
+    return cv;
   }
 }

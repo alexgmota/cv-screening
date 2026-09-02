@@ -9,7 +9,7 @@ import { CvDomainError } from '../../domain/shared/app-error';
  * Renders structured CV data into a PDF document buffer using PDFKit.
  */
 export class PdfRendererService {
-  private readonly photoWidth = 90;
+  private readonly photoWidth = 110;
   private readonly margin = 50;
   private readonly pageWidth = 595.28;
   private readonly contentWidth = 595.28 - 50 * 2;
@@ -52,8 +52,11 @@ export class PdfRendererService {
     try {
       const safeKey = photoPath.replace(/[/\\]/g, '/');
       const source = await fs.readFile(join(this.storageRoot, safeKey));
-      const image = sharp(source).resize(this.photoWidth, this.photoWidth, { fit: 'cover' });
-      return await image.jpeg().toBuffer();
+      const image = sharp(source).resize(this.photoWidth * 4, this.photoWidth * 4, {
+        fit: 'cover',
+        kernel: sharp.kernel.lanczos3,
+      });
+      return await image.jpeg({ quality: 95, chromaSubsampling: '4:4:4' }).toBuffer();
     } catch {
       return null;
     }

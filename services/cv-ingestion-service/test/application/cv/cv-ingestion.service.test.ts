@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CvIngestionService } from '../../../src/application/cv/cv-ingestion.service';
-import { CvEntity } from '../../../src/domain/cv/cv.entity';
 import { DomainError } from '../../../src/domain/shared/app-error';
 
 function createMockGemini() {
@@ -35,11 +34,41 @@ function createMockChunker() {
   } as any;
 }
 
+function createMockPdfExtractor() {
+  return {
+    extract: vi.fn().mockResolvedValue('Jane Smith\nFrontend Developer\nsummary text'),
+  } as any;
+}
+
+function createMockMetadataExtractor() {
+  return {
+    extractMetadata: vi.fn().mockResolvedValue({
+      name: 'Jane Smith',
+      email: 'jane@example.com',
+      phone: '123-456-7890',
+      role: 'Frontend Developer',
+      summary: 'summary text',
+      skills: ['React', 'TypeScript'],
+      education: [{ institution: 'U', degree: 'BS', field: 'CS', startDate: '2016' }],
+      experience: [{ company: 'Co', position: 'Dev', startDate: '2020', description: 'built things' }],
+    }),
+  } as any;
+}
+
+function createMockStorage() {
+  return {
+    read: vi.fn().mockResolvedValue(Buffer.from('pdf-buffer')),
+  } as any;
+}
+
 describe('CvIngestionService', () => {
   let gemini: ReturnType<typeof createMockGemini>;
   let cvRepo: ReturnType<typeof createMockCvRepo>;
   let embRepo: ReturnType<typeof createMockEmbeddingRepo>;
   let chunker: ReturnType<typeof createMockChunker>;
+  let pdfExtractor: ReturnType<typeof createMockPdfExtractor>;
+  let metadataExtractor: ReturnType<typeof createMockMetadataExtractor>;
+  let storage: ReturnType<typeof createMockStorage>;
   let service: CvIngestionService;
 
   beforeEach(() => {
@@ -47,26 +76,32 @@ describe('CvIngestionService', () => {
     cvRepo = createMockCvRepo();
     embRepo = createMockEmbeddingRepo();
     chunker = createMockChunker();
+    pdfExtractor = createMockPdfExtractor();
+    metadataExtractor = createMockMetadataExtractor();
+    storage = createMockStorage();
     service = new CvIngestionService(gemini, {
       run: vi.fn(async (work) => work({ cvRepository: cvRepo, embeddingRepository: embRepo })),
-    }, chunker);
+    }, chunker, pdfExtractor, metadataExtractor, storage);
   });
 
-  it('saves CV, chunks text, generates embeddings, and saves batch', async () => {
-    const cv = CvEntity.create({
-      name: 'Test',
-      role: 'Dev',
-      skills: [],
-      education: [],
-      experience: [],
-    });
+  it('reads PDF, extracts text and metadata, saves CV and embeddings', async () => {
+    const cv = await service.ingest('cvs/test.pdf', 'req-1');
 
-    await service.ingest(cv, 'Some CV text.', 'req-1');
-
-    expect(chunker.chunk).toHaveBeenCalledWith('Some CV text.');
+    expect(storage.read).toHaveBeenCalledWith('cvs/test.pdf');
+    expect(pdfExtractor.extract).toHaveBeenCalled();
+    expect(metadataExtractor.extractMetadata).toHaveBeenCalledWith('Jane Smith\nFrontend Developer\nsummary text');
+    expect(chunker.chunk).toHaveBeenCalledWith('Jane Smith\nFrontend Developer\nsummary text');
     expect(gemini.generateEmbeddings).toHaveBeenCalledWith(['chunk one', 'chunk two']);
     expect(cvRepo.save).toHaveBeenCalledWith(cv);
     expect(embRepo.saveBatch).toHaveBeenCalled();
+
+    expect(cv.name).toBe('Jane Smith');
+    expect(cv.email).toBe('jane@example.com');
+    expect(cv.phone).toBe('123-456-7890');
+    expect(cv.role).toBe('Frontend Developer');
+    expect(cv.summary).toBe('summary text');
+    expect(cv.pdfPath).toBe('cvs/test.pdf');
+    expect(cv.photoPath).toBeUndefined();
 
     const savedEmbeddings = embRepo.saveBatch.mock.calls[0][0];
     expect(savedEmbeddings).toHaveLength(2);
@@ -81,66 +116,52 @@ describe('CvIngestionService', () => {
     chunker.chunk.mockReturnValue([]);
     gemini.generateEmbeddings.mockResolvedValue([]);
 
-    const cv = CvEntity.create({
-      name: 'Empty',
-      role: 'Dev',
-      skills: [],
-      education: [],
-      experience: [],
-    });
-
-    await service.ingest(cv, '   ');
+    const cv = await service.ingest('cvs/empty.pdf');
 
     expect(cvRepo.save).toHaveBeenCalledWith(cv);
     expect(embRepo.saveBatch).not.toHaveBeenCalled();
   });
 
+  it('throws EXTRACTION_FAILED when PDF text extraction fails', async () => {
+    pdfExtractor.extract.mockRejectedValue(new Error('bad pdf'));
+
+    await expect(service.ingest('cvs/bad.pdf')).rejects.toMatchObject({ code: 'EXTRACTION_FAILED' });
+    expect(cvRepo.save).not.toHaveBeenCalled();
+    expect(embRepo.saveBatch).not.toHaveBeenCalled();
+  });
+
+  it('throws EXTRACTION_FAILED when metadata extraction fails and prevents save', async () => {
+    metadataExtractor.extractMetadata.mockRejectedValue(new Error('no json'));
+
+    await expect(service.ingest('cvs/test.pdf')).rejects.toMatchObject({ code: 'EXTRACTION_FAILED' });
+    expect(cvRepo.save).not.toHaveBeenCalled();
+    expect(embRepo.saveBatch).not.toHaveBeenCalled();
+  });
+
+  it('throws STORAGE_ERROR when storage read fails', async () => {
+    storage.read.mockRejectedValue(new Error('file missing'));
+
+    await expect(service.ingest('cvs/missing.pdf')).rejects.toMatchObject({ code: 'STORAGE_ERROR' });
+    expect(pdfExtractor.extract).not.toHaveBeenCalled();
+    expect(cvRepo.save).not.toHaveBeenCalled();
+  });
+
   it('throws STORAGE_ERROR when atomic save fails', async () => {
     cvRepo.save.mockRejectedValue(new Error('DB down'));
-    const cv = CvEntity.create({
-      name: 'X',
-      role: 'Y',
-      skills: [],
-      education: [],
-      experience: [],
-    });
 
-    try {
-      await service.ingest(cv, 'text');
-    } catch (err) {
-      expect(err).toBeInstanceOf(DomainError);
-      expect((err as DomainError).code).toBe('STORAGE_ERROR');
-    }
+    await expect(service.ingest('cvs/test.pdf')).rejects.toMatchObject({ code: 'STORAGE_ERROR' });
   });
 
   it('throws EMBEDDING_FAILED when embeddings fail', async () => {
     gemini.generateEmbeddings.mockRejectedValue(new Error('API down'));
-    const cv = CvEntity.create({
-      name: 'X',
-      role: 'Y',
-      skills: [],
-      education: [],
-      experience: [],
-    });
 
-    try {
-      await service.ingest(cv, 'text');
-    } catch (err) {
-      expect((err as DomainError).code).toBe('EMBEDDING_FAILED');
-    }
+    await expect(service.ingest('cvs/test.pdf')).rejects.toMatchObject({ code: 'EMBEDDING_FAILED' });
   });
 
   it('does not write anything when embedding generation fails', async () => {
     gemini.generateEmbeddings.mockRejectedValue(new Error('429 Too Many Requests'));
-    const cv = CvEntity.create({
-      name: 'X',
-      role: 'Y',
-      skills: [],
-      education: [],
-      experience: [],
-    });
 
-    await expect(service.ingest(cv, 'text')).rejects.toMatchObject({ code: 'EMBEDDING_FAILED' });
+    await expect(service.ingest('cvs/test.pdf')).rejects.toMatchObject({ code: 'EMBEDDING_FAILED' });
     expect(cvRepo.save).not.toHaveBeenCalled();
     expect(embRepo.saveBatch).not.toHaveBeenCalled();
   });

@@ -2,8 +2,7 @@ import { CvIngestionService } from './cv-ingestion.service';
 import { CvEntity } from '../../domain/cv/cv.entity';
 
 export interface CvIngestionCommand {
-  cv: CvEntity;
-  text: string;
+  pdfPath: string;
   requestId?: string;
 }
 
@@ -20,12 +19,12 @@ export class CvIngestionUseCase {
 
   /**
    * Executes an ingestion for a single CV.
-   * @param command The CV and extracted text along with request context.
+   * @param command The PDF path reference and request context.
+   * @returns The created CV entity.
    */
-  async execute(command: CvIngestionCommand): Promise<void> {
+  async execute(command: CvIngestionCommand): Promise<CvEntity> {
     return this.cvIngestionService.ingest(
-      command.cv,
-      command.text,
+      command.pdfPath,
       command.requestId
     );
   }

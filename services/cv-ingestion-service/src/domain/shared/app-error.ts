@@ -4,6 +4,7 @@ export type ErrorCode =
   | 'CV_GENERATION_FAILED'
   | 'LLM_UNAVAILABLE'
   | 'EMBEDDING_FAILED'
+  | 'EXTRACTION_FAILED'
   | 'STORAGE_ERROR';
 
 export interface AppError {
