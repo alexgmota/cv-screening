@@ -54,6 +54,28 @@ export async function sendChatMessage(
   return response.json();
 }
 
+export interface CvListItem {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  role: string;
+  skills: string[];
+  createdAt: string;
+}
+
+export interface CvListPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface CvListResponse {
+  data: CvListItem[];
+  pagination: CvListPagination;
+}
+
 export async function getCvDetail(cvId: string): Promise<CvDetail> {
   const response = await fetch(`${CV_SERVICE_URL}/api/cvs/${cvId}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -65,4 +87,35 @@ export async function getCvDetail(cvId: string): Promise<CvDetail> {
 
   const json = await response.json();
   return json.data as CvDetail;
+}
+
+export async function getCvs(params: {
+  search?: string;
+  page?: number;
+  limit?: number;
+}): Promise<CvListResponse> {
+  const query = new URLSearchParams();
+  if (params.search) query.set('search', params.search);
+  if (params.page !== undefined) query.set('page', String(params.page));
+  if (params.limit !== undefined) query.set('limit', String(params.limit));
+
+  const qs = query.toString();
+  const url = `${CV_SERVICE_URL}/api/cvs${qs ? `?${qs}` : ''}`;
+
+  const response = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  if (!response.ok) {
+    let errorMessage = 'Failed to load CVs';
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.message || errorMessage;
+    } catch {
+      // Response body may not be JSON
+    }
+    throw new Error(errorMessage);
+  }
+
+  return response.json();
 }

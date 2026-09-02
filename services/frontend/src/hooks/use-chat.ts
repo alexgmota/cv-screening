@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   sendChatMessage,
   ChatApiResponse,
@@ -22,6 +22,54 @@ export interface UseChatReturn {
   error: string | null;
   sendMessage: (content: string) => Promise<void>;
   clearError: () => void;
+  clearChat: () => void;
+}
+
+const STORAGE_KEY = 'leadtech-chat-history';
+const TTL_MS = 60 * 60 * 1000;
+
+interface StoredChat {
+  savedAt: number;
+  conversationId?: string;
+  messages: ChatMessage[];
+}
+
+function loadStoredChat(): StoredChat | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+
+    const stored = JSON.parse(raw) as StoredChat;
+    if (!stored || !stored.savedAt || !Array.isArray(stored.messages)) return null;
+
+    if (Date.now() - stored.savedAt > TTL_MS) {
+      localStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
+
+    return {
+      ...stored,
+      messages: stored.messages.map((m) => ({
+        ...m,
+        timestamp: new Date(m.timestamp),
+      })),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveChat(messages: ChatMessage[], conversationId?: string) {
+  try {
+    const payload: StoredChat = {
+      savedAt: Date.now(),
+      conversationId,
+      messages,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // Storage may be unavailable; ignore to avoid breaking chat
+  }
 }
 
 export function useChat(): UseChatReturn {
@@ -29,6 +77,25 @@ export function useChat(): UseChatReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | undefined>();
+  const hydrated = useRef(false);
+
+  useEffect(() => {
+    const stored = loadStoredChat();
+    if (stored) {
+      setMessages(stored.messages);
+      setConversationId(stored.conversationId);
+    }
+    hydrated.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated.current) return;
+    if (messages.length === 0) {
+      localStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+    saveChat(messages, conversationId);
+  }, [messages, conversationId]);
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -70,5 +137,11 @@ export function useChat(): UseChatReturn {
     setError(null);
   }, []);
 
-  return { messages, isLoading, error, sendMessage, clearError };
+  const clearChat = useCallback(() => {
+    setMessages([]);
+    setConversationId(undefined);
+    setError(null);
+  }, []);
+
+  return { messages, isLoading, error, sendMessage, clearError, clearChat };
 }

@@ -13,6 +13,7 @@ export interface MockChatService {
 export interface MockCvRepository {
   findById: ReturnType<typeof vi.fn>;
   findAll: ReturnType<typeof vi.fn>;
+  findPage: ReturnType<typeof vi.fn>;
 }
 
 export function createMockChatService(overrides?: Partial<MockChatService>): MockChatService {
@@ -26,6 +27,7 @@ export function createMockCvRepository(overrides?: Partial<MockCvRepository>): M
   return {
     findById: vi.fn(),
     findAll: vi.fn(),
+    findPage: vi.fn(),
     ...overrides,
   };
 }

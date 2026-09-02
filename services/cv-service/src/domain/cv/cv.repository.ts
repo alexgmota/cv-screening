@@ -7,9 +7,15 @@ export interface SimilarChunk {
   similarity: number;
 }
 
+export interface CvPageResult {
+  data: CvEntity[];
+  total: number;
+}
+
 export interface ICvRepository {
   findById(id: string): Promise<CvEntity | null>;
   findAll(): Promise<CvEntity[]>;
+  findPage(params: { search?: string; limit: number; offset: number }): Promise<CvPageResult>;
 }
 
 export interface IEmbeddingRepository {

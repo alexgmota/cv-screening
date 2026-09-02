@@ -22,12 +22,11 @@ export class CvController {
         MAX_LIMIT,
         Math.max(1, parseInt(req.query.limit as string, 10) || DEFAULT_LIMIT)
       );
-
-      const allCvs = await this.cvQueryService.findAll();
-      const total = allCvs.length;
-      const totalPages = Math.ceil(total / limit);
+      const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
       const offset = (page - 1) * limit;
-      const cvs = allCvs.slice(offset, offset + limit);
+
+      const { data: cvs, total } = await this.cvQueryService.findPage({ search, limit, offset });
+      const totalPages = Math.ceil(total / limit);
 
       res.json({
         data: cvs.map((cv) => ({

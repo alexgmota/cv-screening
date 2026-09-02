@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { CvEntity, Education, Experience } from '../../domain/cv/cv.entity';
-import { ICvRepository } from '../../domain/cv/cv.repository';
+import { CvPageResult, ICvRepository } from '../../domain/cv/cv.repository';
 
 interface CvRow {
   id: string;
@@ -39,6 +39,46 @@ export class CvRepositoryImpl implements ICvRepository {
     );
 
     return result.rows.map((row) => this.toEntity(row));
+  }
+
+  async findPage(params: { search?: string; limit: number; offset: number }): Promise<CvPageResult> {
+    const { limit, offset } = params;
+    const search = params.search?.trim() || '';
+    const hasSearch = search.length > 0;
+    const pattern = `%${search}%`;
+
+    if (hasSearch) {
+      const countResult = await this.pool.query<{ count: number }>(
+        'SELECT COUNT(*)::int AS count FROM cvs WHERE name ILIKE $1 OR role ILIKE $1',
+        [pattern]
+      );
+      const total = countResult.rows[0].count;
+
+      const dataResult = await this.pool.query<CvRow>(
+        'SELECT * FROM cvs WHERE name ILIKE $1 OR role ILIKE $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+        [pattern, limit, offset]
+      );
+
+      return {
+        data: dataResult.rows.map((row) => this.toEntity(row)),
+        total,
+      };
+    }
+
+    const countResult = await this.pool.query<{ count: number }>(
+      'SELECT COUNT(*)::int AS count FROM cvs'
+    );
+    const total = countResult.rows[0].count;
+
+    const dataResult = await this.pool.query<CvRow>(
+      'SELECT * FROM cvs ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+      [limit, offset]
+    );
+
+    return {
+      data: dataResult.rows.map((row) => this.toEntity(row)),
+      total,
+    };
   }
 
   private toEntity(row: CvRow): CvEntity {

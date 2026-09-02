@@ -52,7 +52,7 @@ describe('CV Endpoints', () => {
   describe('GET /api/cvs', () => {
     it('should return 200 with paginated CV list', async () => {
       const cvs = [createTestCv({ id: 'cv-1' }), createTestCv({ id: 'cv-2', name: 'Bob' })];
-      mockCvRepo.findAll.mockResolvedValue(cvs);
+      mockCvRepo.findPage.mockResolvedValue({ data: cvs, total: 2 });
 
       const res = await request(app)
         .get('/api/cvs')
@@ -67,8 +67,8 @@ describe('CV Endpoints', () => {
     });
 
     it('should respect page and limit query parameters', async () => {
-      const cvs = Array.from({ length: 5 }, (_, i) => createTestCv({ id: `cv-${i}` }));
-      mockCvRepo.findAll.mockResolvedValue(cvs);
+      const cvs = Array.from({ length: 2 }, (_, i) => createTestCv({ id: `cv-page2-${i}` }));
+      mockCvRepo.findPage.mockResolvedValue({ data: cvs, total: 5 });
 
       const res = await request(app)
         .get('/api/cvs?page=2&limit=2')
@@ -82,7 +82,7 @@ describe('CV Endpoints', () => {
     });
 
     it('should cap limit at 100', async () => {
-      mockCvRepo.findAll.mockResolvedValue([]);
+      mockCvRepo.findPage.mockResolvedValue({ data: [], total: 0 });
 
       const res = await request(app)
         .get('/api/cvs?limit=500')
@@ -92,7 +92,7 @@ describe('CV Endpoints', () => {
     });
 
     it('should default to page 1 and limit 20', async () => {
-      mockCvRepo.findAll.mockResolvedValue([]);
+      mockCvRepo.findPage.mockResolvedValue({ data: [], total: 0 });
 
       const res = await request(app)
         .get('/api/cvs')
@@ -103,7 +103,7 @@ describe('CV Endpoints', () => {
     });
 
     it('should return empty data array when no CVs exist', async () => {
-      mockCvRepo.findAll.mockResolvedValue([]);
+      mockCvRepo.findPage.mockResolvedValue({ data: [], total: 0 });
 
       const res = await request(app)
         .get('/api/cvs')
@@ -115,7 +115,7 @@ describe('CV Endpoints', () => {
 
     it('should not expose sensitive fields like pdfPath or photoPath in list', async () => {
       const cv = createTestCv();
-      mockCvRepo.findAll.mockResolvedValue([cv]);
+      mockCvRepo.findPage.mockResolvedValue({ data: [cv], total: 1 });
 
       const res = await request(app)
         .get('/api/cvs')
@@ -123,6 +123,18 @@ describe('CV Endpoints', () => {
 
       expect(res.body.data[0]).not.toHaveProperty('pdfPath');
       expect(res.body.data[0]).not.toHaveProperty('photoPath');
+    });
+
+    it('should pass search query to findPage', async () => {
+      mockCvRepo.findPage.mockResolvedValue({ data: [], total: 0 });
+
+      await request(app)
+        .get('/api/cvs?search=frontend')
+        .expect(200);
+
+      expect(mockCvRepo.findPage).toHaveBeenCalledWith(
+        expect.objectContaining({ search: 'frontend' })
+      );
     });
   });
 

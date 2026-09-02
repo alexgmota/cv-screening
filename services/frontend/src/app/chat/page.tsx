@@ -5,9 +5,10 @@ import { useChat } from '@/hooks/use-chat';
 import { MessageList } from '@/components/chat/message-list';
 import { MessageInput } from '@/components/chat/message-input';
 import { CvViewerPanel } from '@/components/cv-viewer/cv-viewer-panel';
+import { Nav } from '@/components/nav/nav';
 
 export default function ChatPage() {
-  const { messages, isLoading, error, sendMessage, clearError } = useChat();
+  const { messages, isLoading, error, sendMessage, clearError, clearChat } = useChat();
   const [selectedCvId, setSelectedCvId] = useState<string | null>(null);
 
   const handleOpenCv = useCallback((cvId: string) => {
@@ -20,10 +21,21 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-screen">
+      <Nav />
       <header className="border-b bg-white p-4">
-        <div className="max-w-3xl mx-auto px-6">
-          <h1 className="text-xl font-semibold">CV Screening Chat</h1>
-          <p className="text-sm text-gray-500">Ask questions about candidates</p>
+        <div className="max-w-3xl mx-auto px-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold">CV Screening Chat</h1>
+            <p className="text-sm text-gray-500">Ask questions about candidates</p>
+          </div>
+          {messages.length > 0 && (
+            <button
+              onClick={clearChat}
+              className="text-xs bg-white border border-gray-300 text-gray-700 px-3 py-1.5 rounded hover:bg-gray-100 transition-colors whitespace-nowrap"
+            >
+              Clear conversation
+            </button>
+          )}
         </div>
       </header>
 
