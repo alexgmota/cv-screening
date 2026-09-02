@@ -70,9 +70,8 @@ export class GenerationUseCase {
     if (!job) return;
 
     job.status = 'in_progress';
-    console.log('[cv-generator] generation job started', { jobId, count, roles: this.generateRoles(count) });
-
     const roles = this.generateRoles(count);
+    console.log('[cv-generator] generation job started', { jobId, count, roles });
 
     for (const role of roles) {
       try {
