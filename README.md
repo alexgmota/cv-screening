@@ -170,7 +170,7 @@ flowchart TD
     end
 
     subgraph Ingestion["INGESTION (cv-ingestion-service :4003)"]
-        I1[POST /api/cvs/index { pdfPath }] --> I2[Read PDF from shared /data/cvs]
+        I1["POST /api/cvs/index { pdfPath }"] --> I2[Read PDF from shared /data/cvs]
         I2 --> I3[pdf-parse extracts text]
         I3 --> I4[Gemini extracts CV metadata JSON]
         I4 --> I5[Chunk text with overlap]
